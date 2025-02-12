@@ -40,22 +40,23 @@ def before_cat_sends_message(msg, cat):
     settings = cat.mad_hatter.get_plugin().load_settings()
     if not settings.get("enable_double_check"):
         return
-    
-    declarative_memories = ""
-    for m in cat.working_memory.declarative_memories:
-        declarative_memories += " --- " + m[0].page_content + " ---\n"
-    else:
-        declarative_memories += "(contesto vuoto)"
 
+    declarative_memories = ""
+    if not cat.working_memory.declarative_memories:
+        declarative_memories += "(empty context)"
+    else:
+        for m in cat.working_memory.declarative_memories:
+            declarative_memories += " --- " + m[0].page_content + " ---\n"  
+    
     prompt = f"""Fact check and review the final response of a conversation, leaving only the information that can be inferred from the contents of the tag <facts>.
 If all the information is contained in the <facts>, repeat the response. Otherwise, recreate the response with only the information that is contained in <facts>.
 If <facts> is empty, ask for document uploads.
 
 <facts>
 {declarative_memories}
-<facts>
+</facts>
 
-Response to be fact checked (may contain informations not present in the <facts> tag):
+Response to be fact checked (may contain information not present in the <facts> tag):
 - {msg.content}
 
 Fact checked response:

@@ -1,66 +1,52 @@
-
-from cat.mad_hatter.decorators import hook
-from cat.log import log
-
-
-@hook(priority=-1)
-def agent_prompt_prefix(prefix, cat):
-    prefix += """
-Given the content of the xml tag <memory> below,
-go on with conversation only using info retrieved from the <memory> contents.
-It is important you only rely on `<memory>` because we are in a high risk environment.
-If <memory> is empty or irrelevant to the conversation, ask for different wording or to contact the community.
-"""
-    return prefix
-
-@hook
-def agent_prompt_suffix(suffix, cat):
-
-    return """
-<memory>
-    <memory-past-conversations>
-{episodic_memory}
-    </memory-past-conversations>
-
-    <memory-from-documents>
-{declarative_memory}
-    </memory-from-documents>
-
-    <memory-from-executed-actions>
-{tools_output}
-    </memory-from-executed-actions>
-</memory>
-"""
-
+from cat import hook, CatMessage, AgenticWorkflowOutput, AgenticWorkflowTask
 
 
 @hook
-def before_cat_sends_message(msg, cat):
-    
+def before_cat_sends_message(message: CatMessage, agent_output: AgenticWorkflowOutput, cat) -> CatMessage:
     settings = cat.mad_hatter.get_plugin().load_settings()
     if not settings.get("enable_double_check"):
-        return
+        return message
 
-    declarative_memories = ""
-    if not cat.working_memory.declarative_memories:
-        declarative_memories += "(empty context)"
+    context_memories = ""
+    if not cat.working_memory.context_memories:
+        context_memories += "(empty context)"
     else:
-        for m in cat.working_memory.declarative_memories:
-            declarative_memories += " --- " + m[0].page_content + " ---\n"  
+        for m in cat.working_memory.context_memories:
+            context_memories += " --- " + m.document.page_content + " ---\n"
+
+    context_history = ""
+    if not cat.working_memory.history:
+        context_history += "(empty history)"
+    else:
+        for h in cat.working_memory.history:
+            context_history += " --- " + h.text + " ---\n"
     
-    prompt = f"""Fact check and review the final response of a conversation, leaving only the information that can be inferred from the contents of the tag <facts>.
-If all the information is contained in the <facts>, repeat the response. Otherwise, recreate the response with only the information that is contained in <facts>.
-If <facts> is empty, ask for document uploads.
+    system_prompt = f"""Fact check and review the final response of a conversation, leaving only the information that can
+be inferred from the contents of the tag <facts> and <history>. If all the information is contained in the <facts> or <history>,
+repeat the response. Otherwise, recreate the response with only the information that is contained in <facts>.
+If <facts> is empty, ask for document uploads to be able to answer the question.
 
 <facts>
-{declarative_memories}
+{context_memories}
 </facts>
 
-Response to be fact checked (may contain information not present in the <facts> tag):
-- {msg.content}
+<history>
+{context_history}
+</history>
+"""
+
+    prompt=f"""
+Response to be fact checked (may contain information not present in the <facts> or <history> tags):
+- {message.text}
 
 Fact checked response:
 - """
 
-    msg.content = cat.llm(prompt)
-    return msg
+    agent_input = AgenticWorkflowTask(system_prompt=system_prompt, user_prompt=prompt)
+
+    message.text = cat.agentic_workflow.run(
+        task=agent_input,
+        llm=cat.large_language_model,
+        callbacks=cat.plugin_manager.execute_hook("llm_callbacks", [], caller=cat),
+    )
+    return message

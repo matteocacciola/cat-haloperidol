@@ -2,8 +2,8 @@ from cat import hook, CatMessage, AgenticWorkflowOutput, AgenticWorkflowTask
 
 
 @hook
-def before_cat_sends_message(message: CatMessage, agent_output: AgenticWorkflowOutput, cat) -> CatMessage:
-    settings = cat.mad_hatter.get_plugin().load_settings()
+async def before_cat_sends_message(message: CatMessage, agent_output: AgenticWorkflowOutput, cat) -> CatMessage:
+    settings = await cat.mad_hatter.get_plugin().load_settings()
     if not settings.get("enable_double_check"):
         return message
 
@@ -44,9 +44,12 @@ Fact checked response:
 
     agent_input = AgenticWorkflowTask(system_prompt=system_prompt, user_prompt=prompt)
 
-    message.text = cat.agentic_workflow.run(
+    af = await cat.agentic_workflow()
+    llm = await cat.large_language_model()
+    callbacks = await cat.plugin_manager.execute_hook("llm_callbacks", [], caller=cat)
+    message.text = await af.run(
         task=agent_input,
-        llm=cat.large_language_model,
-        callbacks=cat.plugin_manager.execute_hook("llm_callbacks", [], caller=cat),
+        llm=llm,
+        callbacks=callbacks,
     )
     return message

@@ -44,12 +44,10 @@ Fact checked response:
 
     agent_input = AgenticWorkflowTask(system_prompt=system_prompt, user_prompt=prompt)
 
-    af = await cat.agentic_workflow()
-    llm = await cat.large_language_model()
     callbacks = await cat.plugin_manager.execute_hook("llm_callbacks", [], caller=cat)
-    message.text = await af.run(
+    message.text = await cat.agentic_workflow.run(
         task=agent_input,
-        llm=llm,
+        llm=cat.large_language_model,
         callbacks=callbacks,
     )
     return message
